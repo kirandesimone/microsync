@@ -1,4 +1,4 @@
-# microsave
+# microsync
 
 ## Git Workflow
 
