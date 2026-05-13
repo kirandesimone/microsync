@@ -1,5 +1,31 @@
 # microsync
 
+## Project Structure
+
+```
+microgeo/
+├── app/
+│   ├── main.py       # app factory, lifespan, exception handlers
+│   ├── api/          # endpoints (area, point, search)
+│   ├── services/     # Ochestration, async Overpass, async Nominatim
+│   ├── models/       # request/response models
+│   └── core/         # Settings via env / .env file, app logics
+├── tests/
+├── pyproject.toml
+└── .env
+```
+
+## MongoDB
+Create and populate `.env.mongodb` environment file in the local project root. The environment file requires the following variables to be defined:
+
+```
+MONGODB_URI=<Replace with MongoDB Connection String>
+MONGODB_DB_NAME=<Replace with Database Name>
+```
+
+> [!CAUTION]
+> Do not commit `.env.mongodb` to git
+
 ## Git Workflow
 
 #### Sync main before branching
