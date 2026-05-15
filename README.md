@@ -15,8 +15,26 @@ microgeo/
 └── .env
 ```
 
+## Public API
+
+
 ## MongoDB
+
+### Write Cache
+
+Implements a coalescing write-buffer (`io.BufferedWrite` / `collections.deque`):
+- Every publish call stores only the most recent `(x, y)` per player in a dict; intermediate ticks are discarded.
+- A background asyncio.Task flushes the buffer to MongoDB every 3 seconds.
+- If a client's `POSITION_CACHE_MAX_PENDING` count is hit, the bufffer force-flushes that client immediately as a safety net.
+- On shutdown, call `flush_all()` to drain the buffer before the connection is closed.
+- If a flush fails, the entry is re-buffered so the next cycle can try again.
+
+The free tier allows up to 100 operations per second. That's shared across all reads and writes hitting the cluster. With 5 clients polling at `20 fps tick rate = 100 writes/sec`, we're sitting right at the ceiling before a single read happens. With the 3-second write cache, that drops to roughly `5 clients ÷ 3 seconds = ~2 writes/sec`, plus poll calls. At 5 clients polling a few times a second, we're looking at maybe 15–20 ops/sec total, well within budget.
+
+
+### Development Environment
 Create and populate `.env.mongodb` environment file in the local project root. The environment file requires the following variables to be defined:
+
 
 ```
 MONGODB_URI=<Replace with MongoDB Connection String>
