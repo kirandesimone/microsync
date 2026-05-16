@@ -46,8 +46,6 @@ class PositionWriteCache:
 
     async def stop(self) -> None:
         """Cancel the background task, called before flush_all on shutdown."""
-        # Guard, only run if task is running
-        #   Cancel task
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
             try:

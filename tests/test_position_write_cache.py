@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.position_cache import PositionWriteCache
+from app.services.position_write_cache import PositionWriteCache
 
 
 @pytest.fixture
@@ -26,6 +26,7 @@ def mock_db():
 
 
 class TestPositionWriteCache:
+
     @pytest.mark.asyncio
     async def test_put_returns_true_when_buffered(self, cache, mock_db):
         """First write for a user should be buffered (cached = True)."""

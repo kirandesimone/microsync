@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # Write / Read Cache
     position_cache_ttl_seconds: float = 3.0
     position_cache_max_pending: int = 10
+    read_cache_refresh_seconds: float = 2.0
 
 
 def get_settings() -> Settings:
