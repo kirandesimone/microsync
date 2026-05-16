@@ -1,6 +1,6 @@
 """Application configuration"""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
-    class Config:
-        env_file = ".env.mongodb"  # create and populate .env.mongodb file locally, do not commit to git
+    position_cache_ttl_seconds: float = 3.0
+    position_cache_max_pending: int = 10
 
 
 def get_settings() -> Settings:
