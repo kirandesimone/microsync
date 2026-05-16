@@ -16,22 +16,37 @@ def _record(user_id: str, x: float = 1.0, y: float = 2.0) -> PositionRecord:
     return PositionRecord(user_id=user_id, x=x, y=y, timestamp=datetime.now(tz=timezone.utc))
 
 
-def _make_db(position_docs=None):
+def _make_db(agg_results=None, agg_side_effect=None):
     """Builds a miniaml mock AsyncDatabase for testing"""
 
+    collection = MagicMock()
+
+    async def _fake_cursor():
+        for item in (agg_results or []):
+            yield item
+
+    if agg_side_effect:
+        collection.aggregate = MagicMock(side_effect=agg_side_effect)
+    else:
+        collection.aggregate = MagicMock(return_value=_fake_cursor())
+
     db = MagicMock()
+    db.__getitem__ = MagicMock(return_value=collection)
+    return db, collection
 
-    position_docs = position_docs or {}
 
-    def _get_collection(name):
-        uid = name.removeprefix("positions_")
-        pos_col = MagicMock()
-        pos_col.find_one = AsyncMock(return_value=position_docs.get(uid))
-
-        return pos_col
-
-    db.__getitem__ = MagicMock(side_effect=_get_collection)
-    return db
+def _agg_row(user_id: str, x: float = 1.0, y: float = 2.0) -> dict:
+    """Build a pipeline result row as MongoDB would return it."""
+    return {
+        "_id": user_id,
+        "doc": {
+            "_id": "mongo_object_id",
+            "user_id": user_id,
+            "x": x,
+            "y": y,
+            "timestamp": datetime.now(tz=timezone.utc),
+        },
+    }
 
 
 @pytest.fixture
@@ -42,101 +57,125 @@ def cache():
 
 class TestPositionReadCache_GetMany:
 
-    def test_returns_matching_records(self, cache):
-        cache._snapshot = {
-            "p1": _record("p1"),
-            "p2": _record("p2"),
-            "p3": _record("p3"),
-        }
-        result = cache.get_many(["p1", "p3"])
-
-        assert set(result.keys()) == {"p1", "p3"}
-
-
-    def test_omits_unknown_ids(self, cache):
-        """user_ids not in the snapshot are silently excluded, not an error."""
-        cache._snapshot = {"p1": _record("p1")}
-        result = cache.get_many(["p1", "unknown"])
-
-        assert set(result.keys()) == {"p1"}
-
-
     def test_returns_empty_dict_when_snapshot_empty(self, cache):
-        result = cache.get_many(["p1", "p2"])
+        assert cache.get_many() == {}
 
-        assert result == {}
+    def test_returns_all_players_in_snapshot(self, cache):
+        cache._snapshot = {"p1": _record("p1"), "p2": _record("p2")}
+        result = cache.get_many()
 
+        assert set(result.keys()) == {"p1", "p2"}
 
-    def test_returns_empty_dict_for_empty_request(self, cache):
+    def test_returns_copy_not_reference(self, cache):
+        """Mutating the returned dict must not corrupt the snapshot."""
         cache._snapshot = {"p1": _record("p1")}
-
-        assert cache.get_many([]) == {}
-
-
-    def test_does_not_mutate_snapshot(self, cache):
-        """Callers modifying the returned dict must not corrupt the snapshot."""
-        rec = _record("p1")
-        cache._snapshot = {"p1": rec}
-        result = cache.get_many(["p1"])
+        result = cache.get_many()
         result["p2"] = _record("p2")
 
         assert "p2" not in cache._snapshot
 
+    def test_returns_correct_values(self, cache):
+        cache._snapshot = {"p1": _record("p1", x=5.0, y=6.0)}
+        result = cache.get_many()
 
-    def test_returns_correct_record_values(self, cache):
-        rec = _record("p1", x=7.0, y=8.0)
-        cache._snapshot = {"p1": rec}
-        result = cache.get_many(["p1"])
-
-        assert result["p1"].x == 7.0
-        assert result["p1"].y == 8.0
+        assert result["p1"].x == 5.0
+        assert result["p1"].y == 6.0
 
 
-class TestPositionReadCache_FetchFromDB:
+
+class TestRefresh:
 
     @pytest.mark.asyncio
-    async def test_returns_record_when_document_exists(self, cache):
-        doc = {
-            "user_id": "p1", "x": 3.0, "y": 4.0, "timestamp": datetime.now(tz=timezone.utc)
-        }
-        db = _make_db(position_docs={"p1": doc})
+    async def test_snapshot_populated_from_aggregation(self, cache):
+        db, _ = _make_db(agg_results=[_agg_row("p1"), _agg_row("p2")])
         cache._db = db
-        result = await cache._fetch_from_db("p1")
+        await cache._refresh()
 
-        assert result is not None
-        assert result.user_id == "p1"
-        assert result.x == 3.0
+        assert set(cache._snapshot.keys()) == {"p1", "p2"}
 
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_no_document(self, cache):
-        db = _make_db({"p1": None})
+    async def test_snapshot_cleared_when_no_results(self, cache):
+        cache._snapshot = {"p1": _record("p1")}
+        db, _ = _make_db(agg_results=[])
         cache._db = db
-        result = await cache._fetch_from_db("p1")
+        await cache._refresh()
 
-        assert result is None
+        assert cache._snapshot == {}
 
 
     @pytest.mark.asyncio
-    async def test_queries_correct_collection(self, cache):
-        """Must look in positions_{user_id}, not some other collection."""
-        doc = {
-            "user_id": "p1", "x": 1.0, "y": 1.0, "timestamp": datetime.now(tz=timezone.utc)
-        }
-        db = _make_db(position_docs={"rick-and-morty": doc})
+    async def test_mongo_id_stripped_from_records(self, cache):
+        """_id from the doc subdocument should not leak into PositionRecord."""
+        db, _ = _make_db(agg_results=[_agg_row("p1")])
         cache._db = db
-        await cache._fetch_from_db("rich-and-morty")
+        await cache._refresh()
+        record = cache._snapshot["p1"]
 
-        db.__getitem__.assert_called_once_with("positions_rich-and-morty")
-
-
-
+        assert not hasattr(record, "_id")
 
 
+    @pytest.mark.asyncio
+    async def test_correct_values_stored_in_snapshot(self, cache):
+        db, _ = _make_db(agg_results=[_agg_row("p1", x=7.0, y=8.0)])
+        cache._db = db
+        await cache._refresh()
+
+        assert cache._snapshot["p1"].x == 7.0
+        assert cache._snapshot["p1"].y == 8.0
 
 
+    @pytest.mark.asyncio
+    async def test_snapshot_replaced_not_merged(self, cache):
+        """Players absent from the new aggregation result must not persist."""
+        cache._snapshot = {"old_player": _record("old_player")}
+        db, _ = _make_db(agg_results=[_agg_row("p1")])
+        cache._db = db
+        await cache._refresh()
+
+        assert "old_player" not in cache._snapshot
+        assert "p1" in cache._snapshot
 
 
+    @pytest.mark.asyncio
+    async def test_stale_snapshot_retained_on_db_failure(self, cache):
+        """If the aggregation raises, the existing snapshot must be preserved."""
+        stale = _record("p1", x=9.0)
+        cache._snapshot = {"p1": stale}
+        db, _ = _make_db(agg_side_effect=Exception("DB timeout"))
+        cache._db = db
+        await cache._refresh()  # must not raise
 
+        assert cache._snapshot["p1"].x == 9.0
+
+
+    @pytest.mark.asyncio
+    async def test_noop_when_db_not_set(self, cache):
+        cache._db = None
+        await cache._refresh()
+        assert cache._snapshot == {}
+
+
+    @pytest.mark.asyncio
+    async def test_queries_single_positions_collection(self, cache):
+        """Aggregation must target POSITIONS_COLLECTION, not per-player collection."""
+        from app.core.config import get_settings
+
+        db, _ = _make_db(agg_results=[])
+        cache._db = db
+        await cache._refresh()
+        
+        db.__getitem__.assert_called_with(get_settings().position_collection_name)
+
+
+    @pytest.mark.asyncio
+    async def test_single_aggregation_call_regardless_of_player_count(self, cache):
+        """Exactly one aggregate() call per refresh — not one per player."""
+        rows = [_agg_row(f"p{i}") for i in range(5)]
+        db, collection = _make_db(agg_results=rows)
+        cache._db = db
+        await cache._refresh()
+        
+        collection.aggregate.assert_called_once()
 
 

@@ -4,6 +4,7 @@ import logging
 import datetime
 from dataclasses import dataclass
 
+from pymongo import InsertOne
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.config import get_settings
@@ -36,7 +37,9 @@ class PositionWriteCache:
         """Called once at app startup after the DB connection is established"""
         self._db = db
         if self._flush_task is None or self._flush_task.done():
-            self._flush_task = asyncio.create_task(self._flush_loop(), name="position-cache-flush-task")
+            self._flush_task = asyncio.create_task(
+                self._flush_loop(), name="position-write-cache-flush-task"
+            )
             log.info(
                 "Position write-cache started (TTL=%.1fs, max_pending=%d)",
                 get_settings().position_cache_ttl_seconds,
@@ -76,7 +79,7 @@ class PositionWriteCache:
 
             if pending >= get_settings().position_cache_max_pending:
                 log.debug(f"Max pending reached for {user_id} -> forcing flush")
-                await self._flush_user(user_id)
+                await self._flush_all_locked()
                 return False  # flushed immediately
 
         return True  # buffered
@@ -85,10 +88,8 @@ class PositionWriteCache:
     async def flush_all(self) -> None:
         """Flush the entire buffer to MongoDB."""
         async with self._lock:
-            user_ids = list(self._buffer.keys())
-            for uid in user_ids:
-                await self._flush_user(uid)
-        log.info(f"Flushed {len(user_ids)} users' positions to MongoDB")
+            await self._flush_all_locked()
+        log.info("Write-cache fully flushed to MongoDB")
 
 
     # Internal API
@@ -103,26 +104,38 @@ class PositionWriteCache:
                 log.exception(f"Unhandled exception during scheduled cache flush.")
 
 
-    async def _flush_user(self, user_id: str) -> None:
-        """Write a singer user's buffered position to MongoDB. Caller must hold the lock."""
-        entry = self._buffer.pop(user_id, None)
-        if entry is None or self._db is None:
+    async def _flush_all_locked(self) -> None:
+        """
+        Write all buffered positions to MongoDB in a single bulk operation. Caller must hold the lock.
+        """
+
+        if not self._buffer or self._db is None:
             return
 
-        collection = self._db[f"positions_{user_id}"]
-        document = {
-            "user_id": entry.user_id,
-            "x": entry.x,
-            "y": entry.y,
-            "timestamp": entry.timestamp
-        }
+        entries = list(self._buffer.values())
+        operations = [
+            InsertOne({
+                "user_id": e.user_id,
+                "x": e.x,
+                "y": e.y,
+                "timestamp": e.timestamp
+            })
+            for e in entries
+        ]
+
+        # optimistically clear before the await so new puts aren't blocked
+        self._buffer.clear()
+
         try:
-            await collection.insert_one(document)
-            log.debug(f"Flushed position for {user_id} to MongoDB")
+            collection = self._db[get_settings().position_collection_name]
+            await collection.bulk_write(operations, ordered=False)
+            log.debug(f"Flushed {len(entries)} positions to MongoDB")
         except Exception:
-            # re-buffer the entry so the data isn't lost; the next flush will retry (US-1 reliability attribute)
-            self._buffer[user_id] = entry
-            log.exception(f"Failed to flush position for {user_id} -> re-buffering")
+            # restore all entries so the next frame tries again
+            for entry in entries:
+                self._buffer.setdefault(entry.user_id, entry)
+
+            log.exception(f"Failed to flush positions to MongoDB - {len(entries)} entries re-buffered.")
             raise
 
 

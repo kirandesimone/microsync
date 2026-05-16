@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    position_collection_name: str = "positions" + "_"
+
     # Write / Read Cache
     position_cache_ttl_seconds: float = 3.0
     position_cache_max_pending: int = 10
