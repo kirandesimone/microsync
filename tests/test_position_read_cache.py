@@ -12,6 +12,19 @@ from app.services.position_read_cache import PositionReadCache
 
 # Helpers
 
+class _AsyncCursor:
+    """Minimal async iterable for mocking Mongo aggregation results."""
+    def __init__(self, rows: list[dict]):
+        self._rows = rows
+
+    def __aiter__(self):
+        return self._iterate()
+
+    async def _iterate(self):
+        for row in self._rows:
+            yield row
+
+
 def _record(user_id: str, x: float = 1.0, y: float = 2.0) -> PositionRecord:
     return PositionRecord(user_id=user_id, x=x, y=y, timestamp=datetime.now(tz=timezone.utc))
 
@@ -21,14 +34,10 @@ def _make_db(agg_results=None, agg_side_effect=None):
 
     collection = MagicMock()
 
-    async def _fake_cursor():
-        for item in (agg_results or []):
-            yield item
-
     if agg_side_effect:
-        collection.aggregate = MagicMock(side_effect=agg_side_effect)
+        collection.aggregate = AsyncMock(side_effect=agg_side_effect)
     else:
-        collection.aggregate = MagicMock(return_value=_fake_cursor())
+        collection.aggregate = AsyncMock(return_value=_AsyncCursor(agg_results or []))
 
     db = MagicMock()
     db.__getitem__ = MagicMock(return_value=collection)
@@ -83,7 +92,7 @@ class TestPositionReadCache_GetMany:
 
 
 
-class TestRefresh:
+class TestPositionReadCache_Refresh:
 
     @pytest.mark.asyncio
     async def test_snapshot_populated_from_aggregation(self, cache):
@@ -165,7 +174,7 @@ class TestRefresh:
         cache._db = db
         await cache._refresh()
         
-        db.__getitem__.assert_called_with(get_settings().position_collection_name)
+        db.__getitem__.assert_called_with(get_settings().fast_position_collection_name)
 
 
     @pytest.mark.asyncio
@@ -176,6 +185,6 @@ class TestRefresh:
         cache._db = db
         await cache._refresh()
         
-        collection.aggregate.assert_called_once()
+        collection.aggregate.assert_awaited_once()
 
 

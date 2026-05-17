@@ -68,15 +68,14 @@ class PositionReadCache:
         if self._db is None:
             return
 
-
         pipeline = [
             {"$sort": {"timestamp": DESCENDING}},
             {"$group": {"_id": "$user_id", "doc": {"$first": "$$ROOT"}}}
         ]
 
         try:
-            collection = self._db[get_settings().position_collection_name]
-            cursor = collection.aggregate(pipeline)
+            collection = self._db[get_settings().fast_position_collection_name]
+            cursor = await collection.aggregate(pipeline)
             new_snapshot: dict[str, PositionRecord] = {}
 
             async for result in cursor:
