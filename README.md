@@ -6,8 +6,8 @@
 microgeo/
 ├── app/
 │   ├── main.py       # app factory, lifespan, exception handlers
-│   ├── api/          # endpoints (area, point, search)
-│   ├── services/     # Ochestration, async Overpass, async Nominatim
+│   ├── api/          # endpoints
+│   ├── services/     # Ochestration
 │   ├── models/       # request/response models
 │   └── core/         # Settings via env / .env file, app logics
 ├── tests/
