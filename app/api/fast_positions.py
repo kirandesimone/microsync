@@ -14,7 +14,7 @@ from app.services.position_read_cache import position_read_cache
 from app.services.position_write_cache import position_write_cache
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/positions", tags=["positions"])
+router = APIRouter(prefix="/fast-positions", tags=["fast-positions"])
 
 
 @router.post(

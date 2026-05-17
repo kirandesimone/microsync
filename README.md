@@ -23,8 +23,8 @@ microgeo/
 ### Fast Positions
 | User Story                         | Method | Path               | Purpose                                     |
 |------------------------------------|--------|--------------------|---------------------------------------------|
-| 1. Publish Client Position Updates | PUT    | /positions/publish | Client publishes current batch of positions |
-| 2. Receive Client Position Updates | GET    | /positions         | Client polls cached positions               |
+| 1. Publish Client Position Updates | PUT    | /fast-positions/publish | Client publishes current batch of positions |
+| 2. Receive Client Position Updates | GET    | /fast-positions         | Client polls cached positions               |
 | 3. Sync User Data on Maps          | POST   | ---                |                                             |
 |                                    |        |                    |                                             |
 
@@ -129,7 +129,7 @@ sequenceDiagram
     participant MongoDB
     
     Note over Client,MongoDB: Publish Cycle (every tick)
-    Client->>+Middleware: POST /positions/publish
+    Client->>+Middleware: POST /fast-positions/publish
     Middleware->>Router: record start time<br/>call_next(request)
     Router->>Endpoints: 
     Endpoints->>+WriteCache: cache.put()
@@ -149,7 +149,7 @@ sequenceDiagram
     deactivate ReadCache
     Note over ReadCache: snapshot updated in memory
     Note over Client,MongoDB: Poll Cycle (any client, any tick)
-    Client->>+Middleware: GET /positions
+    Client->>+Middleware: GET /fast-positions
     Middleware->>Router: record start time
     Router->>Endpoints: 
     Endpoints->>+ReadCache: get_many()

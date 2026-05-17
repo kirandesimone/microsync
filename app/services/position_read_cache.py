@@ -74,7 +74,7 @@ class PositionReadCache:
         ]
 
         try:
-            collection = self._db[get_settings().position_collection_name]
+            collection = self._db[get_settings().fast_position_collection_name]
             cursor = await collection.aggregate(pipeline)
             new_snapshot: dict[str, PositionRecord] = {}
 

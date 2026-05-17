@@ -73,7 +73,7 @@ class TestFastPositionsApi_Publish:
 
     def test_valid_publish_returns_201(self, client: TestClient) -> None:
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "p1", "x": 1.0, "y": 2.0}
         )
 
@@ -85,7 +85,7 @@ class TestFastPositionsApi_Publish:
 
     def test_missing_user_id_returns_422(self, client: TestClient) -> None:
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"x": 1.0, "y": 2.0})
 
         assert response.status_code == 422
@@ -93,7 +93,7 @@ class TestFastPositionsApi_Publish:
 
     def test_empty_user_id_returns_422(self, client: TestClient) -> None:
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "", "x": 1.0, "y": 2.0},
         )
         assert response.status_code == 422
@@ -101,7 +101,7 @@ class TestFastPositionsApi_Publish:
 
     def test_response_echoes_coordinates(self, client):
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "p1", "x": 3.0, "y": 4.0},
         )
         body = response.json()
@@ -113,7 +113,7 @@ class TestFastPositionsApi_Publish:
 
     def test_response_includes_timestamp(self, client):
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "p1", "x": 0.0, "y": 0.0},
         )
         body = response.json()
@@ -124,7 +124,7 @@ class TestFastPositionsApi_Publish:
 
     def test_response_includes_cached_flag(self, client):
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "p1", "x": 0.0, "y": 0.0},
         )
         assert "cached" in response.json()
@@ -133,7 +133,7 @@ class TestFastPositionsApi_Publish:
     def test_nan_coordinate_returns_422(self, client) -> None:
         """NaN coordinates must be rejected before reaching the DB."""
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             params={"user_id": "p1", "x": float("inf"), "y": 0.0},
         )
         assert response.status_code == 422
@@ -142,7 +142,7 @@ class TestFastPositionsApi_Publish:
     def test_missing_x_returns_422(self, client):
         """NaN / Infinity coordinates must be rejected before reaching the DB."""
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             params={"user_id": "p1", "y": 2.0},
         )
         assert response.status_code == 422
@@ -151,12 +151,12 @@ class TestFastPositionsApi_Publish:
 class TestFastPositionsApi_GetPositions:
 
     def test_returns_200(self, client):
-        response = client.get("/positions")
+        response = client.get("/fast-positions")
         assert response.status_code == 200
 
 
     def test_response_shape(self, client):
-        response = client.get("/positions")
+        response = client.get("/fast-positions")
         body = response.json()
 
         assert "positions" in body
@@ -166,7 +166,7 @@ class TestFastPositionsApi_GetPositions:
 
 
     def test_count_matches_positions_length(self, client):
-        response = client.get("/positions")
+        response = client.get("/fast-positions")
         body = response.json()
 
         assert body["count"] == len(body["positions"])
@@ -176,7 +176,7 @@ class TestFastPositionsApi_TimingMiddleware:
 
     def test_header_present_on_get(self, client):
         """Every response must have the X-Process-Time-Ms header."""
-        response = client.get("/positions")
+        response = client.get("/fast-positions")
 
         assert "x-process-time-ms" in response.headers
 
@@ -184,7 +184,7 @@ class TestFastPositionsApi_TimingMiddleware:
     def test_header_present_on_post(self, client):
         """The middleware must fire on POST requests, not just GET."""
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"user_id": "p1", "x": 1.0, "y": 2.0}
         )
 
@@ -193,7 +193,7 @@ class TestFastPositionsApi_TimingMiddleware:
 
     def test_header_is_numeric(self, client):
         """Value must parse as a float number in milliseconds."""
-        response = client.get("/positions")
+        response = client.get("/fast-positions")
         value = float(response.headers["x-process-time-ms"])
 
         assert value >= 0.0
@@ -202,7 +202,7 @@ class TestFastPositionsApi_TimingMiddleware:
     def test_header_present_on_validation_error(self, client):
         """Middleware must run even when 422 is returned."""
         response = client.post(
-            "/positions/publish",
+            "/fast-positions/publish",
             json={"x": 1.0, "y": 2.0}  # missing user_id
         )
 

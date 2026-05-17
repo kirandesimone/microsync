@@ -13,6 +13,7 @@ from app.middleware.timing import TimingMiddleware
 from app.services.position_read_cache import position_read_cache
 from app.services.position_write_cache import position_write_cache
 from app.api.fast_positions import router as fast_positions_router
+from app.api.positions import router as positions_router
 
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ def create_app(lifespan=create_lifespan) -> FastAPI:
     )
 
     app.add_middleware(TimingMiddleware)
+    app.include_router(positions_router)
     app.include_router(fast_positions_router)
 
     @app.get("/status", tags=["status"], include_in_schema=False)

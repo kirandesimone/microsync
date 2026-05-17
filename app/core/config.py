@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     env_mongodb_path: str = ".env.mongodb"
     mongodb_uri: str = ""
     mongodb_db_name: str = ""
-    position_collection_name: str = "positions" + "_"
+    fast_position_collection_name: str = "fast-positions" + "_"
 
 
 def get_settings() -> Settings:

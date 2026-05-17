@@ -149,7 +149,7 @@ class TestPositionWriteCache_FlushAll:
         cache._db = db
         await cache.put("p1", 1.0, 1.0, _now())
         await cache.flush_all()
-        db.__getitem__.assert_called_with(get_settings().position_collection_name)
+        db.__getitem__.assert_called_with(get_settings().fast_position_collection_name)
 
 
     @pytest.mark.asyncio

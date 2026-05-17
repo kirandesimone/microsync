@@ -52,7 +52,7 @@ async def ensure_indexes(db: AsyncDatabase) -> None:
     so the collection doesn't grow unbounded.
     """
 
-    collection = db[get_settings().position_collection_name]
+    collection = db[get_settings().fast_position_collection_name]
     await collection.create_indexes([
         IndexModel([("user_id", DESCENDING), ("timestamp", DESCENDING)]),
         IndexModel([("timestamp", DESCENDING)], expireAfterSeconds=1800, name="ttl_timestamp")

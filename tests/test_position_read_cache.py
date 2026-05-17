@@ -174,7 +174,7 @@ class TestPositionReadCache_Refresh:
         cache._db = db
         await cache._refresh()
         
-        db.__getitem__.assert_called_with(get_settings().position_collection_name)
+        db.__getitem__.assert_called_with(get_settings().fast_position_collection_name)
 
 
     @pytest.mark.asyncio

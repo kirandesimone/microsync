@@ -127,7 +127,7 @@ class PositionWriteCache:
         self._buffer.clear()
 
         try:
-            collection = self._db[get_settings().position_collection_name]
+            collection = self._db[get_settings().fast_position_collection_name]
             await collection.bulk_write(operations, ordered=False)
             log.debug(f"Flushed {len(entries)} positions to MongoDB")
         except Exception:
