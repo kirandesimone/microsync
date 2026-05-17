@@ -20,13 +20,25 @@ microgeo/
 
 ## Public API
 
+### Location
+
+The Location API provides CR~~U~~D operations for user position data. 
+
+| User Story                                                      | Method | Path                      | Purpose                                                   |
+|-----------------------------------------------------------------|--------|---------------------------|-----------------------------------------------------------|
+| 1. Publish Client Position Updates                              | POST   | `/positions/<clientId>`     | Publish a client's current position                       |
+| 2. Receive Client Position Updates<br>3. Sync User Data on Maps | GET    | `/positions/<areaId>`       | Get all current positions for an area                     |        
+| 2. Receive Client Position Updates<br>3. Sync User Data on Maps | GET    | `/positions/<areaId>/posts` | Get user posts for an area with optional timestamp filter |
+|                                                                 | DELETE | `/positions/<areaId>/<id>`  | Delete a specific position entry                          |
+
 ### Fast Positions
-| User Story                         | Method | Path               | Purpose                                     |
-|------------------------------------|--------|--------------------|---------------------------------------------|
-| 1. Publish Client Position Updates | PUT    | /fast-positions/publish | Client publishes current batch of positions |
-| 2. Receive Client Position Updates | GET    | /fast-positions         | Client polls cached positions               |
-| 3. Sync User Data on Maps          | POST   | ---                |                                             |
-|                                    |        |                    |                                             |
+
+Fast Positions is an API that allows clients to publish position updates in near real-time. This api uses a [write- and read-cache](#write-cache) to coalesce position updates per user and provide a single point of truth for clients. The caches introduce a small latency between client and server.
+
+| User Story                         | Method | Path                    | Purpose                                     |
+|------------------------------------|--------|-------------------------|---------------------------------------------|
+| 1. Publish Client Position Updates | POST   | `/fast-positions/publish` | Client publishes current batch of positions |
+| 2. Receive Client Position Updates | GET    | `/fast-positions`         | Client polls cached positions               |
 
 
 ## UML Diagram
@@ -79,6 +91,12 @@ classDiagram
             +publish_position(paylod) PositionPublishResponse
             +get_all_positions() AllPositionsResponse
         }
+        class Positions {
+            +publish_position(clientId, positionData) JSONResponse
+            +get_client_positions(areaId) JSONResponse
+            +get_user_posts(areaId, since) JSONResponse
+            +delete_position(areaId, id) JSONResponse
+        }
     }
     namespace Schemas {
         class PositionRecord {
@@ -104,6 +122,15 @@ classDiagram
             +Int count
         }
     }
+    namespace Models {
+        class PositionData {
+            +Float x
+            +Float y
+            +String timestamp
+            +String areaId
+            +Bool public
+        }
+    }
     
     PositionWriteCache --* _BufferedPosition
     PositionWriteCache --> Settings
@@ -114,6 +141,10 @@ classDiagram
     FastPositions --> PositionPublishRequest
     FastPositions --> PositionPublishResponse
     FastPositions --> AllPositionsResponse
+    
+    Positions --> PositionData
+    Positions --> PositionWriteCache
+    Positions --> PositionReadCache
 
 ```
 
