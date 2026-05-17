@@ -8,10 +8,10 @@ from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.database.mongo import lifespan
 from app.database.mongo import connect_db, disconnect_db, ensure_indexes
 from app.services.position_read_cache import position_read_cache
 from app.services.position_write_cache import position_write_cache
+from app.api.fast_positions import router as fast_positions_router
 
 
 log = logging.getLogger(__name__)
@@ -50,6 +50,8 @@ def create_app(lifespan=create_lifespan) -> FastAPI:
         description=settings.app_description,
         lifespan=lifespan
     )
+
+    app.include_router(fast_positions_router)
 
     @app.get("/status", tags=["status"], include_in_schema=False)
     async def status() -> dict:
