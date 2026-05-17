@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.database.mongo import connect_db, disconnect_db, ensure_indexes
+from app.middleware.timing import TimingMiddleware
 from app.services.position_read_cache import position_read_cache
 from app.services.position_write_cache import position_write_cache
 from app.api.fast_positions import router as fast_positions_router
@@ -51,6 +52,7 @@ def create_app(lifespan=create_lifespan) -> FastAPI:
         lifespan=lifespan
     )
 
+    app.add_middleware(TimingMiddleware)
     app.include_router(fast_positions_router)
 
     @app.get("/status", tags=["status"], include_in_schema=False)

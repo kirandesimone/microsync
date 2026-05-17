@@ -7,8 +7,11 @@ microgeo/
 ├── app/
 │   ├── main.py       # app factory, lifespan, exception handlers
 │   ├── api/          # endpoints
+│   ├── database/     # database connection(s)
+│   ├── middleware/   # database middleware
+│   ├── schemas/      # database schemas
 │   ├── services/     # Ochestration
-│   ├── models/       # request/response models
+│   ├── models/       # data models
 │   └── core/         # Settings via env / .env file, app logics
 ├── tests/
 ├── pyproject.toml
@@ -16,6 +19,14 @@ microgeo/
 ```
 
 ## Public API
+
+### Fast Positions
+| User Story                         | Method | Path               | Purpose                                     |
+|------------------------------------|--------|--------------------|---------------------------------------------|
+| 1. Publish Client Position Updates | PUT    | /positions/publish | Client publishes current batch of positions |
+| 2. Receive Client Position Updates | GET    | /positions         | Client polls cached positions               |
+| 3. Sync User Data on Maps          | POST   | ---                |                                             |
+|                                    |        |                    |                                             |
 
 
 ## UML Diagram
@@ -60,21 +71,95 @@ classDiagram
         +DateTime timestamp
         +Int pending_count
     }
-    class PositionRecord {
-        +String user_id
-        +Float x
-        +Float y
-        +DateTime timestamp
+    class TimingMiddleware {
+        +dispatch(request, call_next) Response
+    }
+    namespace Api {
+        class FastPositions {
+            +publish_position(paylod) PositionPublishResponse
+            +get_all_positions() AllPositionsResponse
+        }
+    }
+    namespace Schemas {
+        class PositionRecord {
+            +String user_id
+            +Float x
+            +Float y
+            +DateTime timestamp
+        }
+        class PositionPublishRequest {
+            +String user_id
+            +Float x
+            +Float y
+        }
+        class PositionPublishResponse {
+            +String user_id
+            +Float x
+            +Float y
+            +DateTime timestamp
+            +Bool cached
+        }
+        class AllPositionsResponse {
+            +list[PositionRecord] positions
+            +Int count
+        }
     }
     
-    PositionWriteCache --> _BufferedPosition
+    PositionWriteCache --* _BufferedPosition
     PositionWriteCache --> Settings
     
     PositionReadCache --> PositionRecord
     PositionReadCache --> Settings
+    
+    FastPositions --> PositionPublishRequest
+    FastPositions --> PositionPublishResponse
+    FastPositions --> AllPositionsResponse
 
 ```
 
+## Sequencing Diagram: Fast Positions
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Middleware
+    participant Router
+    participant Endpoints
+    participant WriteCache
+    participant ReadCache
+    participant MongoDB
+    
+    Note over Client,MongoDB: Publish Cycle (every tick)
+    Client->>+Middleware: POST /positions/publish
+    Middleware->>Router: record start time<br/>call_next(request)
+    Router->>Endpoints: 
+    Endpoints->>+WriteCache: cache.put()
+    WriteCache-->>-Endpoints: cached=True
+    Endpoints-->>Router: 
+    Router-->>Middleware: 200 Response<br/>elapsed=now-start_time
+    Middleware-->>-Client: 200 + X-Process-Time-Ms:X.XX
+    Note over Client,MongoDB: Background flush (every 3s independent of requests)
+    WriteCache->>MongoDB: flush_all()
+    activate WriteCache
+    MongoDB-->>WriteCache: bulk_write()
+    deactivate WriteCache
+    Note over Client,MongoDB: Read Cache Refresh (every 2s independent of requests)
+    ReadCache->>MongoDB: _refresh()
+    activate ReadCache
+    ReadCache-->>MongoDB: aggregate latest positions 
+    deactivate ReadCache
+    Note over ReadCache: snapshot updated in memory
+    Note over Client,MongoDB: Poll Cycle (any client, any tick)
+    Client->>+Middleware: GET /positions
+    Middleware->>Router: record start time
+    Router->>Endpoints: 
+    Endpoints->>+ReadCache: get_many()
+    ReadCache-->>-Endpoints: snapshot()
+    Endpoints-->>Router:     
+    Router-->>Middleware: 
+    Middleware-->>-Client: 200 + X-Process-Time-Ms:X.XX
+    
+    
+```
 
 ## MongoDB
 

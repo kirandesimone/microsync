@@ -170,3 +170,41 @@ class TestFastPositionsApi_GetPositions:
         body = response.json()
 
         assert body["count"] == len(body["positions"])
+
+
+class TestFastPositionsApi_TimingMiddleware:
+
+    def test_header_present_on_get(self, client):
+        """Every response must have the X-Process-Time-Ms header."""
+        response = client.get("/positions")
+
+        assert "x-process-time-ms" in response.headers
+
+
+    def test_header_present_on_post(self, client):
+        """The middleware must fire on POST requests, not just GET."""
+        response = client.post(
+            "/positions/publish",
+            json={"user_id": "p1", "x": 1.0, "y": 2.0}
+        )
+
+        assert "x-process-time-ms" in response.headers
+
+
+    def test_header_is_numeric(self, client):
+        """Value must parse as a float number in milliseconds."""
+        response = client.get("/positions")
+        value = float(response.headers["x-process-time-ms"])
+
+        assert value >= 0.0
+
+
+    def test_header_present_on_validation_error(self, client):
+        """Middleware must run even when 422 is returned."""
+        response = client.post(
+            "/positions/publish",
+            json={"x": 1.0, "y": 2.0}  # missing user_id
+        )
+
+        assert response.status_code == 422
+        assert "x-process-time-ms" in response.headers
