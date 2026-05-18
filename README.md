@@ -24,8 +24,8 @@ microgeo/
 
 The Location API provides CR~~U~~D operations for user position data. 
 
-| User Story                                                      | Method | Path                      | Purpose                                                   |
-|-----------------------------------------------------------------|--------|---------------------------|-----------------------------------------------------------|
+| User Story                                                      | Method | Path                        | Purpose                                                   |
+|-----------------------------------------------------------------|--------|-----------------------------|-----------------------------------------------------------|
 | 1. Publish Client Position Updates                              | POST   | `/positions/<clientId>`     | Publish a client's current position                       |
 | 2. Receive Client Position Updates<br>3. Sync User Data on Maps | GET    | `/positions/<areaId>`       | Get all current positions for an area                     |        
 | 2. Receive Client Position Updates<br>3. Sync User Data on Maps | GET    | `/positions/<areaId>/posts` | Get user posts for an area with optional timestamp filter |
@@ -35,8 +35,8 @@ The Location API provides CR~~U~~D operations for user position data.
 
 Fast Positions is an API that allows clients to publish position updates in near real-time. This api uses a [write- and read-cache](#write-cache) to coalesce position updates per user and provide a single point of truth for clients. The caches introduce a small latency between client and server.
 
-| User Story                         | Method | Path                    | Purpose                                     |
-|------------------------------------|--------|-------------------------|---------------------------------------------|
+| User Story                         | Method | Path                      | Purpose                                     |
+|------------------------------------|--------|---------------------------|---------------------------------------------|
 | 1. Publish Client Position Updates | POST   | `/fast-positions/publish` | Client publishes current batch of positions |
 | 2. Receive Client Position Updates | GET    | `/fast-positions`         | Client polls cached positions               |
 
@@ -145,51 +145,74 @@ classDiagram
     Positions --> PositionData
     Positions --> PositionWriteCache
     Positions --> PositionReadCache
-
 ```
 
-## Sequencing Diagram: Fast Positions
+## Sequencing Diagram
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant Middleware
-    participant Router
-    participant Endpoints
-    participant WriteCache
-    participant ReadCache
-    participant MongoDB
+    autonumber
+    actor Client
+    participant MW as TimingMiddleware
+    participant API as FastAPI Router<br/>(/fast-positions)
+    participant WC as PositionWriteCache<br/>(in-memory buffer)
+    participant FT as Flush Task<br/>(background)
+    participant RC as PositionReadCache<br/>(in-memory snapshot)
+    participant RT as Refresh Task<br/>(background)
+    participant DB as MongoDB@{ "type" : "database" }
     
-    Note over Client,MongoDB: Publish Cycle (every tick)
-    Client->>+Middleware: POST /fast-positions/publish
-    Middleware->>Router: record start time<br/>call_next(request)
-    Router->>Endpoints: 
-    Endpoints->>+WriteCache: cache.put()
-    WriteCache-->>-Endpoints: cached=True
-    Endpoints-->>Router: 
-    Router-->>Middleware: 200 Response<br/>elapsed=now-start_time
-    Middleware-->>-Client: 200 + X-Process-Time-Ms:X.XX
-    Note over Client,MongoDB: Background flush (every 3s independent of requests)
-    WriteCache->>MongoDB: flush_all()
-    activate WriteCache
-    MongoDB-->>WriteCache: bulk_write()
-    deactivate WriteCache
-    Note over Client,MongoDB: Read Cache Refresh (every 2s independent of requests)
-    ReadCache->>MongoDB: _refresh()
-    activate ReadCache
-    ReadCache-->>MongoDB: aggregate latest positions 
-    deactivate ReadCache
-    Note over ReadCache: snapshot updated in memory
-    Note over Client,MongoDB: Poll Cycle (any client, any tick)
-    Client->>+Middleware: GET /fast-positions
-    Middleware->>Router: record start time
-    Router->>Endpoints: 
-    Endpoints->>+ReadCache: get_many()
-    ReadCache-->>-Endpoints: snapshot()
-    Endpoints-->>Router:     
-    Router-->>Middleware: 
-    Middleware-->>-Client: 200 + X-Process-Time-Ms:X.XX
+    Note over FT,RT: Started in lifespan on app boot<br/>(main.py create_lifespan)
     
+    Note over Client,DB: Write path — POST /fast-positions/publish
+    Client->>MW: POST /fast-positions/publish<br/>{user_id, x, y}
+    MW->>MW: t0 = perf_counter()
+    MW->>API: forward request
+    API->>API: now = utcnow()
+    API->>WC: put(user_id, x, y, now)
+    WC->>WC: acquire lock,<br/>upsert _BufferedPosition,<br/>pending_count++
+    alt pending_count >= max_pending
+      WC->>WC: _flush_all_locked()
+      WC->>DB: bulk_write(InsertOne[...])
+      DB-->>WC: ack
+      WC-->>API: cached = False (flushed)
+    else under threshold
+      WC-->>API: cached = True (buffered)
+    end
+    API-->>MW: 201 PositionPublishResponse
+    MW->>MW: set X-Process-Time-Ms
+    MW-->>Client: 201 + headers
     
+    Note over Client,DB: Read path — GET /fast-positions/
+    Client->>MW: GET /fast-positions/
+    MW->>API: forward
+    API->>RC: get_many()
+    RC-->>API: dict copy of snapshot
+    API-->>MW: 200 AllPositionsResponse<br/>{positions, count}
+    MW-->>Client: 200 + X-Process-Time-Ms
+    
+    Note over FT,DB: Background flush loop (every position_cache_ttl_seconds)
+    loop forever
+      FT->>FT: sleep(TTL)
+      FT->>WC: flush_all()
+      WC->>WC: snapshot entries, clear buffer
+      WC->>DB: bulk_write(InsertOne[...], ordered=False)
+      alt success
+          DB-->>WC: ack
+      else failure
+          DB-->>WC: error
+          WC->>WC: re-buffer entries via setdefault
+      end
+    end
+    
+    Note over RT,DB: Background refresh loop (every read_cache_refresh_seconds)
+    loop forever
+      RT->>RT: sleep(refresh_seconds)
+      RT->>DB: aggregate([sort ts desc, group by user_id first])
+      DB-->>RT: latest doc per user_id
+      RT->>RC: replace _snapshot
+      Note right of RC: On error: keep stale snapshot
+    end
+    
+    Note over Client,DB: Shutdown: lifespan awaits write_cache.flush_all(),<br/>then disconnect_db()
 ```
 
 ## MongoDB
