@@ -1,5 +1,7 @@
 # microsync
 
+Microsync is a RESTful API microservice designed to rapidly synchronize client position data using FastAPI. It uses in-memory read and write caching to combine high-frequency updates before pushing them to a MongoDB database.
+
 ## Project Structure
 
 ```
@@ -22,7 +24,7 @@ microgeo/
 
 ### Location
 
-The Location API provides CR~~U~~D operations for user position data. 
+The Location API provides Create, Read, Delete (CRD) operations for user position data segmented by area. Data is exchanged using JSON payloads. 
 
 | User Story                                                      | Method | Path                        | Purpose                                                   |
 |-----------------------------------------------------------------|--------|-----------------------------|-----------------------------------------------------------|
@@ -40,6 +42,95 @@ Fast Positions is an API that allows clients to publish position updates in near
 | 1. Publish Client Position Updates | POST   | `/fast-positions/publish` | Client publishes current batch of positions |
 | 2. Receive Client Position Updates | GET    | `/fast-positions`         | Client polls cached positions               |
 
+#### Location API Usage Examples
+
+**Publish a Position (POST `/positions/{clientId}`)**
+Publishes an update for a specific client. The schema allows for arbitrary additional [key-value pairs](https://en.wikipedia.org/wiki/Key%E2%80%93value_database) to be passed in the JSON payload.
+*Request Body:*
+```json
+{
+  "x": 34.05,
+  "y": -118.24,
+  "timestamp": "2026-05-31T21:00:00Z",
+  "areaId": "portland",
+  "public": true
+}
+```
+*Response (201 Created):*
+```json
+{
+  "status": "created",
+  "clientId": "user_123",
+  "buffered": true,
+  "areaId": "portland"
+}
+```
+
+**Get Area Positions (GET `/positions/{areaId}`)**
+Retrieves an array of all currently tracked clients within a specified `areaId`.
+*Response (200 OK):*
+```json
+[
+  {
+    "user_id": "user_123",
+    "x": 34.05,
+    "y": -118.24,
+    "timestamp": "2026-05-31T21:00:00+00:00",
+    "areaId": "portland",
+    "public": true
+  }
+]
+```
+
+### Fast Positions
+
+Fast Positions is an API that allows clients to publish position updates in near [real-time](https://en.wikipedia.org/wiki/Real-time_computing). This API uses a [write- and read-cache](#write-cache) to coalesce position updates per user and provide a single point of truth for clients. The caches introduce a small [latency](https://en.wikipedia.org/wiki/Latency_(engineering)) between client and server.
+
+| User Story                         | Method | Path                      | Purpose                                     |
+|------------------------------------|--------|---------------------------|---------------------------------------------|
+| 1. Publish Client Position Updates | POST   | `/fast-positions/publish` | Client publishes current batch of positions |
+| 2. Receive Client Position Updates | GET    | `/fast-positions`         | Client polls cached positions               |
+
+#### Fast Positions Usage Examples
+
+**Publish a Position (POST `/fast-positions/publish`)**
+Sends player coordinates directly to the memory cache.
+*Request Body:*
+```json
+{
+  "user_id": "player_456",
+  "x": 100.5,
+  "y": 250.0
+}
+```
+*Response (201 Created):*
+```json
+{
+  "user_id": "player_456",
+  "x": 100.5,
+  "y": 250.0,
+  "timestamp": "2026-05-31T21:00:00.000Z",
+  "cached": true
+}
+```
+*(Note: `cached: true` confirms the payload is held in the buffer awaiting background DB insertion).*
+
+**Get All Positions (GET `/fast-positions`)**
+Retrieves the most recent coordinate snapshot for all known active players.
+*Response (200 OK):*
+```json
+{
+  "positions": [
+    {
+      "user_id": "player_456",
+      "x": 100.5,
+      "y": 250.0,
+      "timestamp": "2026-05-31T21:00:00.000Z"
+    }
+  ],
+  "count": 1
+}
+```
 
 ## UML Diagram
 ```mermaid
