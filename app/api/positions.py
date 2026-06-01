@@ -19,8 +19,6 @@ router = APIRouter(prefix="/positions", tags=["positions"])
 class PositionData(BaseModel):
     """
     shape of a position update from any client app.
- 
-    
     """
     x: float
     y: float
@@ -30,26 +28,29 @@ class PositionData(BaseModel):
  
     model_config = {"extra": "allow"}
  
- 
+
+def parse_iso_timestamp(timestamp: str) -> datetime:
+    try:
+        ts = datetime.fromisoformat(
+            timestamp.replace("Z", "+00:00")
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timestamp format: {timestamp}"
+        )
+
+    return ts
+
 @router.post("/{client_id}", status_code=201)
 async def publish_position(client_id: str, positionData: PositionData):
     try:
-        try:
-            ts = datetime.fromisoformat(
-                positionData.timestamp.replace("Z", "+00:00")
-            )
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid timestamp format: {positionData.timestamp}"
-            )
- 
         # buffer the position update via the write cache
         buffered = await position_write_cache.put(
             user_id=client_id,
             x=positionData.x,
             y=positionData.y,
-            timestamp=ts
+            timestamp=parse_iso_timestamp(positionData.timestamp)
         )
  
         return JSONResponse(
@@ -90,6 +91,22 @@ async def get_client_positions(area_id: str):
         raise HTTPException(status_code=500, detail=str(e))
  
  
+def parse_user_posts(snapshot: dict[str, PositionRecord]) -> list[str, Any]:
+    entries = []
+    for record in snapshot.values():
+        if record.model_extra.get("areaId") != area_id:
+            continue
+        if since_dt and record.timestamp <= since_dt:
+            continue
+        entries.append({
+            "user_id": record.user_id,
+            "x": record.x,
+            "y": record.y,
+            "timestamp": record.timestamp.isoformat(),
+            **{k: v for k, v in record.model_extra.items()}
+        })
+
+
 @router.get("/{area_id}/posts")
 async def get_user_posts(
     areaId: str,
@@ -97,7 +114,6 @@ async def get_user_posts(
 ):
     try:
         snapshot = position_read_cache.get_many()
- 
         since_dt = None
         if since:
             try:
@@ -107,20 +123,8 @@ async def get_user_posts(
                     status_code=400,
                     detail=f"Invalid since timestamp format: {since}"
                 )
- 
-        entries = []
-        for record in snapshot.values():
-            if record.model_extra.get("areaId") != area_id:
-                continue
-            if since_dt and record.timestamp <= since_dt:
-                continue
-            entries.append({
-                "user_id": record.user_id,
-                "x": record.x,
-                "y": record.y,
-                "timestamp": record.timestamp.isoformat(),
-                **{k: v for k, v in record.model_extra.items()}
-            })
+        
+        entries = parse_user_posts(snapshot)
  
         return JSONResponse(status_code=200, content=entries)
     except HTTPException:
