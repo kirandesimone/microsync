@@ -90,5 +90,4 @@ class PositionReadCache:
             log.exception("Read-cache refresh failed — retaining stale snapshot.")
 
 
-# module-level singleton
 position_read_cache = PositionReadCache()

@@ -58,7 +58,6 @@ class PositionWriteCache:
 
 
     # Public API
-
     async def put(self, user_id: str, x: float, y: float, timestamp: datetime) -> bool:
         """
         Buffer a position update
@@ -80,9 +79,9 @@ class PositionWriteCache:
             if pending >= get_settings().position_cache_max_pending:
                 log.debug(f"Max pending reached for {user_id} -> forcing flush")
                 await self._flush_all_locked()
-                return False  # flushed immediately
+                return False
 
-        return True  # buffered
+        return True
 
 
     async def flush_all(self) -> None:
@@ -93,7 +92,6 @@ class PositionWriteCache:
 
 
     # Internal API
-
     async def _flush_loop(self) -> None:
         """Background task that flushes the buffer to MongoDB on every TTL tick."""
         while True:
@@ -139,5 +137,4 @@ class PositionWriteCache:
             raise
 
 
-# module-level singleton
 position_write_cache = PositionWriteCache()

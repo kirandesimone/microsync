@@ -24,7 +24,7 @@ class PositionPublishResponse(BaseModel):
 class PositionRecord(BaseModel):
     """Shape of a position document stored in MongoDB"""
 
-    model_config = ConfigDict(extra="allow")  # so the new int params pass through
+    model_config = ConfigDict(extra="allow")
 
     user_id: str
     x: float
