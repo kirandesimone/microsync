@@ -21,7 +21,6 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def create_lifespan(_app: FastAPI) -> AsyncGenerator:
-    # Startup
     db = await connect_db()
     await ensure_indexes(db)
     position_write_cache.start(db)
@@ -30,7 +29,6 @@ async def create_lifespan(_app: FastAPI) -> AsyncGenerator:
 
     yield
 
-    # Shutdown
     await position_write_cache.flush_all()
     log.info("Write-cache flushed on shutdown.")
     disconnect_db()
