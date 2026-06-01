@@ -25,14 +25,14 @@ class PositionData(BaseModel):
     x: float
     y: float
     timestamp: str
-    areaId: str
+    area_id: str
     public: bool = True
  
     model_config = {"extra": "allow"}
  
  
-@router.post("/{clientId}", status_code=201)
-async def publish_position(clientId: str, positionData: PositionData):
+@router.post("/{client_id}", status_code=201)
+async def publish_position(client_id: str, positionData: PositionData):
     try:
         try:
             ts = datetime.fromisoformat(
@@ -46,7 +46,7 @@ async def publish_position(clientId: str, positionData: PositionData):
  
         # buffer the position update via the write cache
         buffered = await position_write_cache.put(
-            user_id=clientId,
+            user_id=client_id,
             x=positionData.x,
             y=positionData.y,
             timestamp=ts
@@ -56,9 +56,9 @@ async def publish_position(clientId: str, positionData: PositionData):
             status_code=201,
             content={
                 "status": "created",
-                "clientId": clientId,
+                "clientId": client_id,
                 "buffered": buffered,
-                "areaId": positionData.areaId
+                "areaId": positionData.area_id
             }
         )
     except HTTPException:
@@ -67,8 +67,8 @@ async def publish_position(clientId: str, positionData: PositionData):
         raise HTTPException(status_code=400, detail=f"Invalid payload: {str(e)}")
  
  
-@router.get("/{areaId}")
-async def get_client_positions(areaId: str):
+@router.get("/{area_id}")
+async def get_client_positions(area_id: str):
     try:
         snapshot = position_read_cache.get_many()
  
@@ -82,7 +82,7 @@ async def get_client_positions(areaId: str):
                 **{k: v for k, v in record.model_extra.items()}
             }
             for record in snapshot.values()
-            if record.model_extra.get("areaId") == areaId
+            if record.model_extra.get("areaId") == area_id
         ]
  
         return JSONResponse(status_code=200, content=entries)
@@ -90,7 +90,7 @@ async def get_client_positions(areaId: str):
         raise HTTPException(status_code=500, detail=str(e))
  
  
-@router.get("/{areaId}/posts")
+@router.get("/{area_id}/posts")
 async def get_user_posts(
     areaId: str,
     since: Optional[str] = Query(default=None)
@@ -110,7 +110,7 @@ async def get_user_posts(
  
         entries = []
         for record in snapshot.values():
-            if record.model_extra.get("areaId") != areaId:
+            if record.model_extra.get("areaId") != area_id:
                 continue
             if since_dt and record.timestamp <= since_dt:
                 continue
@@ -129,8 +129,8 @@ async def get_user_posts(
         raise HTTPException(status_code=500, detail=str(e))
  
  
-@router.delete("/{areaId}/{id}")
-async def delete_position(areaId: str, id: str):
+@router.delete("/{area_id}/{id}")
+async def delete_position(area_id: str, id: str):
     try:
         ObjectId(id)
     except Exception:
@@ -140,6 +140,6 @@ async def delete_position(areaId: str, id: str):
  
     return JSONResponse(
         status_code=200,
-        content={"status": "deleted", "id": id, "areaId": areaId}
+        content={"status": "deleted", "id": id, "areaId": area_id}
     )
  
