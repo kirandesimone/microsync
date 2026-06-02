@@ -23,9 +23,9 @@ class _BufferedPosition:
 
 class PositionWriteCache:
     """
-    Singleton write-buffer. Created once at module level, shared across requests with `position_write_cache`
+    Singleton write-buffer. Created once at module level, 
+    shared across requests with `position_write_cache`
     """
-
     def __init__(self) -> None:
         self._buffer: dict[str, _BufferedPosition] = {}
         self._lock = asyncio.Lock()
@@ -61,8 +61,6 @@ class PositionWriteCache:
     async def put(self, user_id: str, x: float, y: float, timestamp: datetime) -> bool:
         """
         Buffer a position update
-
-        :return: True if the update was buffered, False if the buffer is full
         """
         async with self._lock:
             existing = self._buffer.get(user_id)
@@ -101,18 +99,9 @@ class PositionWriteCache:
             except Exception:
                 log.exception(f"Unhandled exception during scheduled cache flush.")
 
-
-    async def _flush_all_locked(self) -> None:
-        """
-        Write all buffered positions to MongoDB in a single bulk operation. Caller must hold the lock.
-        """
-
-        if not self._buffer or self._db is None:
-            return
-
-        entries = list(self._buffer.values())
-        operations = [
-            InsertOne({
+    
+    def _build_write_operations(self, entries: list[_BufferedPosition]) -> list[InsertOne]:
+        return [InsertOne({
                 "user_id": e.user_id,
                 "x": e.x,
                 "y": e.y,
@@ -121,6 +110,16 @@ class PositionWriteCache:
             for e in entries
         ]
 
+
+    async def _flush_all_locked(self) -> None:
+        """
+        Write all buffered positions to MongoDB in a single bulk operation. Caller must hold the lock.
+        """
+        if not self._buffer or self._db is None:
+            return
+
+        entries = list(self._buffer.values())
+        operations = self._build_write_operations(entries)
         # optimistically clear before the await so new puts aren't blocked
         self._buffer.clear()
 
