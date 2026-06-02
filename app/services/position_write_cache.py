@@ -100,7 +100,7 @@ class PositionWriteCache:
                 log.exception(f"Unhandled exception during scheduled cache flush.")
 
     
-    def _build_write_operations(entries: list[_BufferedPosition]) -> list[InsertOne]:
+    def _build_write_operations(self, entries: list[_BufferedPosition]) -> list[InsertOne]:
         return [InsertOne({
                 "user_id": e.user_id,
                 "x": e.x,
